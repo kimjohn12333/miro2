@@ -1,0 +1,164 @@
+.tool-panel {
+  width: 80px;
+  background: white;
+  border-right: 1px solid #e9ecef;
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.05);
+}
+
+.tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.tool {
+  width: 48px;
+  height: 48px;
+  background: white;
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.2s ease;
+  font-size: 20px;
+}
+
+.tool:hover:not(.disabled) {
+  background: #f5f5f5;
+  border-color: #0066cc;
+  transform: translateY(-1px);
+}
+
+.tool.active {
+  background: #0066cc;
+  color: white;
+  border-color: #0066cc;
+  box-shadow: 0 2px 8px rgba(0, 102, 204, 0.3);
+}
+
+.tool.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f8f9fa;
+}
+
+.tool-icon {
+  display: block;
+  line-height: 1;
+  font-size: 20px;
+  filter: grayscale(0.3);
+  transition: filter 0.2s ease;
+}
+
+.tool-shortcut {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 8px;
+  font-weight: bold;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 1px 3px;
+  border-radius: 3px;
+  line-height: 1;
+  pointer-events: none;
+  opacity: 0.8;
+  font-family: 'Courier New', monospace;
+  transition: all 0.2s ease;
+}
+
+.tool.active .tool-icon {
+  filter: grayscale(0) brightness(1.2);
+}
+
+.tool.active .tool-shortcut {
+  background: rgba(255, 255, 255, 0.9);
+  color: #0066cc;
+}
+
+.tool:hover:not(.disabled) .tool-icon {
+  filter: grayscale(0) brightness(1.1);
+}
+
+.tool:hover:not(.disabled) .tool-shortcut {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.tool-divider {
+  width: 40px;
+  height: 1px;
+  background: #e9ecef;
+}
+
+.tool-notice {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 12px;
+  color: #999;
+  padding: 8px 4px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  margin-top: auto;
+}
+
+/* Smart positioned tooltip component */
+.smart-tooltip {
+  background: #333;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  max-width: 200px;
+  word-wrap: break-word;
+  opacity: 0.95;
+  animation: tooltipFadeIn 0.2s ease;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+}
+
+@media (max-width: 768px) {
+  .tool-panel {
+    width: 60px;
+    padding: 12px 0;
+  }
+  
+  .tool {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+  }
+  
+  .tool-shortcut {
+    font-size: 7px;
+    padding: 1px 2px;
+    bottom: 1px;
+    right: 1px;
+  }
+  
+  .smart-tooltip {
+    display: none;
+  }
+}

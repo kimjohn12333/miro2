@@ -1,0 +1,267 @@
+.properties-panel {
+  width: 280px;
+  background: white;
+  border-left: 1px solid #e9ecef;
+  padding: 20px;
+  overflow-y: auto;
+  box-shadow: -2px 0 4px rgba(0, 0, 0, 0.05);
+}
+
+.properties-panel h3 {
+  margin: 0 0 20px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.empty-state {
+  text-align: center;
+  color: #666;
+  padding: 40px 20px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.property-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.property-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.property-group label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #555;
+}
+
+.text-input-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.text-input-group input {
+  flex: 1;
+}
+
+.clear-text-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: #f8f9fa;
+  color: #666;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.clear-text-btn:hover {
+  background: #dc3545;
+  color: white;
+  transform: scale(1.1);
+}
+
+.property-group input[type="text"],
+.property-group input[type="number"],
+.property-group select {
+  padding: 8px 12px;
+  border: 1px solid #d4d4d4;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: border-color 0.2s ease;
+}
+
+.property-group input:focus,
+.property-group select:focus {
+  outline: none;
+  border-color: #0066cc;
+}
+
+.property-group input:disabled,
+.property-group select:disabled {
+  background: #f8f9fa;
+  color: #999;
+  cursor: not-allowed;
+}
+
+/* Color Picker */
+.color-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.color-swatch {
+  width: 32px;
+  height: 32px;
+  border: 2px solid #d4d4d4;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.color-swatch:hover:not(:disabled) {
+  transform: scale(1.1);
+  border-color: #0066cc;
+}
+
+.color-swatch.current {
+  border-color: #0066cc;
+  box-shadow: 0 2px 8px rgba(0, 102, 204, 0.3);
+}
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+.color-grid .color-swatch {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #e0e0e0;
+  background: none;
+}
+
+.color-grid .color-swatch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Border Controls */
+.border-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.border-controls select {
+  flex: 1;
+}
+
+.border-controls input[type="number"] {
+  width: 60px;
+}
+
+/* Size Controls */
+.size-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.size-controls input {
+  flex: 1;
+}
+
+.size-controls span {
+  color: #999;
+  font-weight: 500;
+}
+
+/* Position Controls */
+.position-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-group span {
+  width: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #666;
+}
+
+.input-group input {
+  flex: 1;
+}
+
+/* Type Indicator */
+.type-indicator {
+  display: flex;
+  align-items: center;
+}
+
+.type-badge {
+  padding: 4px 12px;
+  background: #f0f0f0;
+  border-radius: 12px;
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+/* Checkbox Group */
+.checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checkbox-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
+}
+
+.checkbox-option input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #0066cc;
+}
+
+/* Edit Notice */
+.edit-notice {
+  margin-top: 20px;
+  padding: 12px;
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #856404;
+  text-align: center;
+}
+
+@media (max-width: 1024px) {
+  .properties-panel {
+    position: absolute;
+    right: -280px;
+    height: 100%;
+    transition: transform 0.3s ease;
+    z-index: 50;
+    box-shadow: -4px 0 8px rgba(0, 0, 0, 0.15);
+  }
+
+  .properties-panel.open {
+    transform: translateX(-280px);
+  }
+}

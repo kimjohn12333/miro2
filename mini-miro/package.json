@@ -1,0 +1,20 @@
+{
+  "name": "mini-miro",
+  "version": "1.0.0",
+  "description": "Simple collaborative whiteboard tool",
+  "scripts": {
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "server:dev": "cd server && npm run dev",
+    "client:dev": "cd client && npm start",
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "build": "cd client && npm run build",
+    "start": "cd server && npm start"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "concurrently": "^7.6.0"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}
