@@ -16,13 +16,26 @@ const io = socketIo(server, {
 
 const PORT = process.env.PORT || 3003;
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    version: '1.0.0',
+    database: 'connected'
+  });
+});
+
 // 미들웨어
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../client/build')));
 
 // SQLite 데이터베이스 초기화
-const db = new sqlite3.Database('./minimiro.db');
+const dbPath = process.env.DB_PATH || './minimiro.db';
+console.log(`Using database path: ${dbPath}`);
+const db = new sqlite3.Database(dbPath);
 
 // 테이블 생성
 db.serialize(() => {
