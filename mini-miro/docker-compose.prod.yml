@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  # Frontend (React + Nginx)
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      target: production
+    container_name: mini-miro-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+    networks:
+      - mini-miro-network
+    environment:
+      - NODE_ENV=production
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`localhost`)"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+
+  # Backend (Node.js API + Socket.IO)
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: mini-miro-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - mini-miro-data:/app/data
+      - ./server/logs:/app/logs
+    networks:
+      - mini-miro-network
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - DB_PATH=/app/data/minimiro.db
+      - LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`localhost`) && PathPrefix(`/api`)"
+      - "traefik.http.services.backend.loadbalancer.server.port=5000"
+
+  # Database backup service
+  backup:
+    image: alpine:latest
+    container_name: mini-miro-backup
+    restart: unless-stopped
+    volumes:
+      - mini-miro-data:/data:ro
+      - ./backups:/backups
+    command: |
+      sh -c '
+        while true; do
+          echo "Creating backup at $$(date)"
+          cp /data/minimiro.db /backups/minimiro-$$(date +%Y%m%d_%H%M%S).db
+          # Keep only last 7 days of backups
+          find /backups -name "minimiro-*.db" -mtime +7 -delete
+          sleep 86400  # 24 hours
+        done
+      '
+    networks:
+      - mini-miro-network
+
+# Named volumes for data persistence
+volumes:
+  mini-miro-data:
+    driver: local
+    name: mini-miro-database
+
+# Network configuration
+networks:
+  mini-miro-network:
+    driver: bridge
+    name: mini-miro-net
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16

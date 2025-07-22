@@ -26,7 +26,7 @@ module.exports = defineConfig({
   /* 공통 설정 */
   use: {
     /* 기본 URL */
-    baseURL: 'http://localhost:3003',
+    baseURL: 'http://localhost:8081',
     /* 스크린샷 및 비디오 설정 */
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

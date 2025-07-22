@@ -5,16 +5,19 @@ import Whiteboard from './components/Whiteboard';
 import { Diagram } from './types';
 import './App.css';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3003';
+const API_URL = process.env.REACT_APP_API_URL || '';
 
 function App() {
+  console.log('🚀 App component rendering');
   const [socket, setSocket] = useState<Socket | null>(null);
   const [userName, setUserName] = useState<string>('');
+  console.log('📊 App component state initialized');
   const [currentDiagram, setCurrentDiagram] = useState<Diagram | null>(null);
   const [diagrams, setDiagrams] = useState<Diagram[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    console.log('🔄 App useEffect starting');
     // 사용자 이름 설정
     const savedName = localStorage.getItem('miniMiroUserName');
     const name = savedName || 
@@ -25,9 +28,29 @@ function App() {
     setUserName(name);
 
     // Socket.io 연결
-    const newSocket = io(API_URL);
+    console.log('🚀 Creating Socket.io connection to:', window.location.origin);
+    const newSocket = io(window.location.origin, {
+      autoConnect: true,
+      transports: ['polling', 'websocket'],
+      upgrade: true,
+      rememberUpgrade: false,
+      timeout: 20000,
+      forceNew: true
+    });
+    
+    console.log('📡 Socket created:', !!newSocket);
+    
+    newSocket.on('connect', () => {
+      console.log('✅ Socket connected!');
+    });
+    
+    newSocket.on('connect_error', (error) => {
+      console.log('❌ Socket connection error:', error);
+    });
+    
     newSocket.emit('identify', { userName: name });
     setSocket(newSocket);
+    console.log('🔧 Socket set in state');
 
     // 다이어그램 목록 로드
     loadDiagrams();
@@ -125,7 +148,7 @@ function App() {
       {!currentDiagram ? (
         <div className="diagram-list-view">
           <header className="app-header-main">
-            <h1>Mini-Miro</h1>
+            <h1>FlowChart Studio</h1>
             <div className="user-info">
               <span>사용자: {userName}</span>
               <button onClick={() => {

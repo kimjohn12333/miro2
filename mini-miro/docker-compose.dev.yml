@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # Frontend (React Development Server)
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.dev
+    container_name: mini-miro-frontend-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./client/src:/app/src
+      - ./client/public:/app/public
+      - /app/node_modules
+    networks:
+      - mini-miro-network
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+      - REACT_APP_API_URL=http://localhost:5000
+      - REACT_APP_SOCKET_URL=http://localhost:5000
+    stdin_open: true
+    tty: true
+    depends_on:
+      - backend
+
+  # Backend (Node.js Development Server)
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.dev
+    container_name: mini-miro-backend-dev
+    ports:
+      - "5000:5000"
+      - "9229:9229"  # Debug port
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+      - mini-miro-data-dev:/app/data
+    networks:
+      - mini-miro-network
+    environment:
+      - NODE_ENV=development
+      - PORT=5000
+      - DB_PATH=/app/data/minimiro.db
+      - LOG_LEVEL=debug
+      - DEBUG=*
+    command: ["nodemon", "--inspect=0.0.0.0:9229", "server.js"]
+
+  # Database viewer (optional)
+  db-viewer:
+    image: coleifer/sqlite-web
+    container_name: mini-miro-db-viewer
+    ports:
+      - "8080:8080"
+    volumes:
+      - mini-miro-data-dev:/data
+    networks:
+      - mini-miro-network
+    environment:
+      - SQLITE_DATABASE=/data/minimiro.db
+    command: ["python", "/usr/local/bin/sqlite_web", "/data/minimiro.db", "--host", "0.0.0.0", "--port", "8080"]
+
+# Development volumes
+volumes:
+  mini-miro-data-dev:
+    driver: local
+    name: mini-miro-database-dev
+
+# Network configuration
+networks:
+  mini-miro-network:
+    driver: bridge
+    name: mini-miro-dev-net

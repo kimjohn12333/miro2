@@ -7,6 +7,7 @@ interface Props {
   canEdit: boolean;
   onDelete: (forceShapeDelete?: boolean) => void;
   hasSelection: boolean;
+  onMermaidImport: () => void;
 }
 
 const ToolPanel: React.FC<Props> = ({ 
@@ -14,7 +15,8 @@ const ToolPanel: React.FC<Props> = ({
   onToolChange, 
   canEdit, 
   onDelete, 
-  hasSelection 
+  hasSelection,
+  onMermaidImport 
 }) => {
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
@@ -135,6 +137,18 @@ const ToolPanel: React.FC<Props> = ({
         >
           <span className="tool-icon">🗑️</span>
           <span className="tool-shortcut">Del</span>
+        </button>
+      </div>
+      
+      <div className="tool-divider"></div>
+      
+      <div className="tool-group">
+        <button
+          className="tool"
+          onClick={onMermaidImport}
+          title="Mermaid 가져오기"
+        >
+          <span className="tool-icon">📊</span>
         </button>
       </div>
       

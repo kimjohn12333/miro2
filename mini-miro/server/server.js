@@ -9,9 +9,12 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"]
-  }
+    origin: ["http://localhost:3000", "http://localhost:3003"],
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  allowEIO3: true,
+  transports: ['polling', 'websocket']
 });
 
 const PORT = process.env.PORT || 3003;
@@ -227,7 +230,7 @@ app.delete('/api/diagrams/:id', (req, res) => {
 
 // Socket.io 연결 처리
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  console.log('🔗 [Server] New socket connection:', socket.id, 'at', new Date().toISOString());
   
   let currentUser = null;
   let currentDiagram = null;
@@ -236,7 +239,7 @@ io.on('connection', (socket) => {
   socket.on('identify', (data) => {
     currentUser = data.userName || `User-${socket.id.substr(0, 6)}`;
     connectedUsers.set(socket.id, currentUser);
-    console.log(`${currentUser} identified`);
+    console.log('👤 [Server] User identified:', currentUser, 'socket:', socket.id);
   });
 
   // 다이어그램 참여
@@ -245,15 +248,18 @@ io.on('connection', (socket) => {
     currentDiagram = diagramId;
     socket.join(`diagram:${diagramId}`);
     
-    console.log(`${currentUser} joined diagram ${diagramId}`);
+    console.log('📥 [Server] User', currentUser, 'joined diagram', diagramId);
     
     // 현재 잠금 상태 전송
     const lock = locks.get(diagramId);
-    socket.emit('lock-status', {
+    const lockStatus = {
       locked: !!lock && lock.expiresAt > Date.now(),
       lockedBy: lock?.userName,
       expiresAt: lock?.expiresAt
-    });
+    };
+    
+    console.log('📤 [Server] Sending lock-status to user:', currentUser, 'status:', lockStatus);
+    socket.emit('lock-status', lockStatus);
     
     // 다른 사용자들에게 알림
     socket.to(`diagram:${diagramId}`).emit('user-joined', {
@@ -273,11 +279,18 @@ io.on('connection', (socket) => {
 
   // 편집 잠금 요청
   socket.on('request-lock', (data) => {
+    console.log('🔐 [Server] Received request-lock event from:', currentUser, 'socket:', socket.id);
+    console.log('📋 [Server] Request data:', data);
+    
     const { diagramId } = data;
     const existingLock = locks.get(diagramId);
     
+    console.log('🔍 [Server] Checking existing lock for diagram:', diagramId);
+    console.log('🔒 [Server] Existing lock:', existingLock);
+    
     // 기존 잠금 확인
     if (existingLock && existingLock.expiresAt > Date.now()) {
+      console.log('❌ [Server] Lock already exists, sending lock-error to:', currentUser);
       socket.emit('lock-error', { 
         message: `${existingLock.userName}님이 편집 중입니다` 
       });
@@ -291,11 +304,15 @@ io.on('connection', (socket) => {
       expiresAt: Date.now() + 5 * 60 * 1000
     };
     
+    console.log('✅ [Server] Creating new lock:', lock);
     locks.set(diagramId, lock);
     
-    console.log(`${currentUser} acquired lock for diagram ${diagramId}`);
+    console.log('🎉 [Server] Lock acquired by:', currentUser, 'for diagram:', diagramId);
     
+    console.log('📤 [Server] Sending lock-acquired to requesting user:', currentUser);
     socket.emit('lock-acquired', { expiresAt: lock.expiresAt });
+    
+    console.log('📢 [Server] Broadcasting lock-status to other users in diagram:', diagramId);
     socket.to(`diagram:${diagramId}`).emit('lock-status', {
       locked: true,
       lockedBy: currentUser,
@@ -306,6 +323,7 @@ io.on('connection', (socket) => {
     setTimeout(() => {
       const currentLock = locks.get(diagramId);
       if (currentLock && currentLock.socketId === socket.id) {
+        console.log('⏰ [Server] Auto-releasing lock for:', currentUser, 'diagram:', diagramId);
         locks.delete(diagramId);
         io.to(`diagram:${diagramId}`).emit('lock-released', {
           releasedBy: currentUser
@@ -385,7 +403,7 @@ io.on('connection', (socket) => {
 
   // 연결 해제
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    console.log('🔌 [Server] Socket disconnected:', socket.id, 'user:', currentUser, 'at:', new Date().toISOString());
     
     // 해당 소켓이 가진 잠금 해제
     for (const [diagramId, lock] of locks.entries()) {
@@ -468,7 +486,7 @@ app.get('*', (req, res) => {
 
 // 서버 시작
 server.listen(PORT, () => {
-  console.log(`Mini-Miro server running on port ${PORT}`);
+  console.log(`FlowChart Studio server running on port ${PORT}`);
 });
 
 // 정리 함수

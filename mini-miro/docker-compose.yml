@@ -23,6 +23,7 @@ services:
       - PORT=3003
       - DB_PATH=/app/data/minimiro.db
       - LOG_LEVEL=info
+      - REACT_APP_API_URL=http://localhost:3003
       
       # Performance settings
       - NODE_OPTIONS=--max-old-space-size=512

@@ -7,6 +7,7 @@ import PropertiesPanel from './PropertiesPanel';
 import EdgeOptionsPanel from './EdgeOptionsPanel';
 import SelectionIndicator from './SelectionIndicator';
 import InlineTextEditor from './InlineTextEditor';
+import MermaidInput from './MermaidInput';
 import './Whiteboard.css';
 
 interface Props {
@@ -21,7 +22,11 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
   const [nodes, setNodes] = useState<Node[]>(diagram.content?.nodes || []);
   const [edges, setEdges] = useState<Edge[]>(diagram.content?.edges || []);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
   const [selectedEdge, setSelectedEdge] = useState<string | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionRect, setSelectionRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [highlightedElements, setHighlightedElements] = useState<{
     nodes: Set<string>;
     edges: Set<string>;
@@ -43,6 +48,9 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
   const [editingEdgeLabel, setEditingEdgeLabel] = useState<string | null>(null);
   const [edgeLabelText, setEdgeLabelText] = useState<string>('');
   const [edgeLabelPosition, setEdgeLabelPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  
+  // Mermaid import state
+  const [showMermaidInput, setShowMermaidInput] = useState(false);
 
   // 도구 변경 시 연결선 생성 모드 리셋
   const handleToolChange = useCallback((newTool: string) => {
@@ -59,6 +67,16 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
   const stageRef = useRef<any>(null);
   
   const isLocked = lockStatus.locked && lockStatus.lockedBy === userName;
+  
+  // Debug isLocked state changes
+  React.useEffect(() => {
+    console.log('🔄 [isLocked] State changed:', {
+      isLocked,
+      lockStatus,
+      userName,
+      calculation: `${lockStatus.locked} && ${lockStatus.lockedBy} === ${userName}`
+    });
+  }, [isLocked, lockStatus, userName]);
 
   // 연결된 요소들을 찾는 함수 (성능 최적화)
   const findConnectedElements = useCallback((nodeId: string) => {
@@ -85,6 +103,7 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
   const clearHighlight = useCallback(() => {
     setHighlightedElements({ nodes: new Set(), edges: new Set() });
     setSelectedNode(null);
+    setSelectedNodes(new Set());
     setSelectedEdge(null);
   }, []);
 
@@ -224,17 +243,115 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
     };
     
     setEdges([...edges, newEdge]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     emitChanges({ edges: { added: [newEdge] } });
   }, [isLocked, edges, edgeOptions]);
 
-  // 노드 클릭 핸들러 (하이라이트 기능 포함)
-  const handleNodeClick = useCallback((nodeId: string) => {
-    if (tool === 'select') {
-      setSelectedNode(nodeId);
+  // 스테이지 마우스 이동 핸들러 (드래그 선택용)
+  const handleStageMouseMoveNew = useCallback((e: any) => {
+    if (isCreatingEdge && edgeStart) {
+      const pos = e.target.getStage().getPointerPosition();
+      const stageScale = stageRef.current.scaleX();
+      const adjustedPos = {
+        x: (pos.x - stagePos.x) / stageScale,
+        y: (pos.y - stagePos.y) / stageScale
+      };
+      setTempEdgeEnd(adjustedPos);
+    } else if (isSelecting && dragStart && tool === 'select') {
+      const pos = e.target.getStage().getPointerPosition();
+      const stageScale = stageRef.current.scaleX();
+      if (pos) {
+        const adjustedPos = {
+          x: (pos.x - stagePos.x) / stageScale,
+          y: (pos.y - stagePos.y) / stageScale
+        };
+        
+        const x = Math.min(dragStart.x, adjustedPos.x);
+        const y = Math.min(dragStart.y, adjustedPos.y);
+        const width = Math.abs(adjustedPos.x - dragStart.x);
+        const height = Math.abs(adjustedPos.y - dragStart.y);
+        
+        setSelectionRect({ x, y, width, height });
+      }
+    }
+  }, [isCreatingEdge, edgeStart, stagePos, isSelecting, dragStart, tool]);
+
+  // 스테이지 마우스 업 핸들러 (드래그 선택 완료)
+  const handleStageMouseUp = useCallback((e: any) => {
+    if (isSelecting && selectionRect) {
+      // 선택 영역 안의 노드들 찾기
+      const selectedNodeIds = new Set<string>();
+      nodes.forEach(node => {
+        const nodeRight = node.x + node.width;
+        const nodeBottom = node.y + node.height;
+        const rectRight = selectionRect.x + selectionRect.width;
+        const rectBottom = selectionRect.y + selectionRect.height;
+        
+        // 노드가 선택 영역과 교차하는지 확인
+        if (node.x < rectRight && nodeRight > selectionRect.x &&
+            node.y < rectBottom && nodeBottom > selectionRect.y) {
+          selectedNodeIds.add(node.id);
+        }
+      });
       
-      // 연결된 요소들 하이라이트
-      const connected = findConnectedElements(nodeId);
-      setHighlightedElements(connected);
+      if (e.evt && e.evt.shiftKey) {
+        // Shift 키를 누르고 있으면 기존 선택에 추가
+        const newSelection = new Set([...Array.from(selectedNodes), ...Array.from(selectedNodeIds)]);
+        setSelectedNodes(newSelection);
+      } else {
+        // 새로운 선택으로 교체
+        setSelectedNodes(selectedNodeIds);
+      }
+      
+      // 한 개만 선택된 경우 selectedNode도 설정 (기존 로직 호환성)
+      if (selectedNodeIds.size === 1) {
+        setSelectedNode(Array.from(selectedNodeIds)[0]);
+      } else {
+        setSelectedNode(null);
+      }
+    }
+    
+    // 선택 상태 리셋
+    setIsSelecting(false);
+    setDragStart(null);
+    setSelectionRect(null);
+  }, [isSelecting, selectionRect, nodes, selectedNodes]);
+
+  // 노드 클릭 핸들러 (하이라이트 기능 포함)
+  const handleNodeClick = useCallback((nodeId: string, e?: any) => {
+    if (tool === 'select') {
+      if (e && e.evt && e.evt.shiftKey) {
+        // Shift 클릭: 다중 선택 모드
+        const newSelection = new Set(selectedNodes);
+        if (newSelection.has(nodeId)) {
+          newSelection.delete(nodeId);
+        } else {
+          newSelection.add(nodeId);
+        }
+        setSelectedNodes(newSelection);
+        
+        if (newSelection.size === 1) {
+          setSelectedNode(Array.from(newSelection)[0]);
+        } else {
+          setSelectedNode(null);
+        }
+      } else {
+        // 일반 클릭: 단일 선택 모드
+        setSelectedNode(nodeId);
+        setSelectedNodes(new Set([nodeId]));
+      }
+      
+      // 연결된 요소들 하이라이트 (선택된 노드들 기준)
+      const allConnected = { nodes: new Set<string>(), edges: new Set<string>() };
+      const currentSelection = e && e.evt && e.evt.shiftKey ? selectedNodes : new Set([nodeId]);
+      
+      currentSelection.forEach(id => {
+        const connected = findConnectedElements(id);
+        connected.nodes.forEach(nodeId => allConnected.nodes.add(nodeId));
+        connected.edges.forEach(edgeId => allConnected.edges.add(edgeId));
+      });
+      
+      setHighlightedElements(allConnected);
       
       // 선택된 노드로 뷰포트 부드럽게 이동 (선택적 센터링)
       const selectedNodeData = nodes.find(n => n.id === nodeId);
@@ -288,7 +405,7 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
         setTempEdgeEnd(null);
       }
     }
-  }, [tool, findConnectedElements, isCreatingEdge, edgeStart, clearHighlight, createEdge, nodes, zoom, stagePos]);
+  }, [tool, findConnectedElements, isCreatingEdge, edgeStart, clearHighlight, createEdge, nodes, zoom, stagePos, selectedNodes]);
 
   // 엣지 클릭 핸들러
   const handleEdgeClick = useCallback((edgeId: string) => {
@@ -361,18 +478,53 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
     setEdgeLabelText('');
   }, []);
 
-  useEffect(() => {
-    if (!socket) return;
+  // Mermaid 가져오기 핸들러
+  const handleMermaidImport = useCallback((mermaidNodes: Node[], mermaidEdges: Edge[]) => {
+    if (!isLocked) {
+      alert('편집하려면 먼저 잠금을 획득하세요');
+      return;
+    }
 
+    // 새로운 노드와 엣지 추가
+    const newNodes = [...nodes, ...mermaidNodes];
+    const newEdges = [...edges, ...mermaidEdges];
+    
+    setNodes(newNodes);
+    setEdges(newEdges);
+
+    // 서버에 변경사항 전송 - emitChanges를 직접 호출하지 않고 임시로 주석 처리
+    if (socket && isLocked) {
+      socket.emit('update-diagram', {
+        diagramId: diagram.id,
+        changes: {
+          nodes: { added: mermaidNodes },
+          edges: { added: mermaidEdges }
+        }
+      });
+    }
+  }, [isLocked, nodes, edges, socket, diagram.id]);
+
+  useEffect(() => {
+    if (!socket) {
+      console.log('❌ [Whiteboard useEffect] Socket is null, cannot set up listeners');
+      return;
+    }
+
+    console.log('🚀 [Whiteboard useEffect] Setting up Socket.io listeners for diagram:', diagram.id);
+    
     // 다이어그램 참여
+    console.log('📤 [Whiteboard] Emitting join-diagram event:', { diagramId: diagram.id });
     socket.emit('join-diagram', { diagramId: diagram.id });
 
     // Socket 이벤트 리스너
     const handleLockStatus = (status: LockStatus) => {
+      console.log('📥 [Whiteboard] Received lock-status event:', status);
       setLockStatus(status);
     };
 
     const handleLockAcquired = (data: { expiresAt: number }) => {
+      console.log('✅ [Whiteboard] Received lock-acquired event:', data);
+      console.log('🔒 [Whiteboard] Setting lock status for user:', userName);
       setLockStatus({
         locked: true,
         lockedBy: userName,
@@ -381,14 +533,17 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
     };
 
     const handleLockReleased = () => {
+      console.log('🔓 [Whiteboard] Received lock-released event');
       setLockStatus({ locked: false });
     };
 
     const handleDiagramUpdated = (data: { changes: DiagramChanges }) => {
+      console.log('📝 [Whiteboard] Received diagram-updated event:', data);
       applyChanges(data.changes);
     };
 
     const handleLockError = (data: { message: string }) => {
+      console.log('⚠️ [Whiteboard] Received lock-error event:', data);
       alert(data.message);
     };
 
@@ -399,6 +554,10 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
     socket.on('lock-error', handleLockError);
 
     return () => {
+      // 컴포넌트 언마운트 시 편집 잠금 자동 해제
+      if (lockStatus.locked && lockStatus.lockedBy === userName) {
+        socket.emit('release-lock', { diagramId: diagram.id });
+      }
       socket.emit('leave-diagram', { diagramId: diagram.id });
       socket.off('lock-status', handleLockStatus);
       socket.off('lock-acquired', handleLockAcquired);
@@ -408,9 +567,43 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
     };
   }, [socket, diagram.id, userName]);
 
+  // 페이지 이탈 시 편집 잠금 자동 해제
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (lockStatus.locked && lockStatus.lockedBy === userName && socket) {
+        socket.emit('release-lock', { diagramId: diagram.id });
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && lockStatus.locked && lockStatus.lockedBy === userName && socket) {
+        socket.emit('release-lock', { diagramId: diagram.id });
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [lockStatus, userName, socket, diagram.id]);
+
   const requestLock = () => {
+    console.log('🔐 [requestLock] Function called at:', new Date().toISOString());
+    console.log('📡 [requestLock] Socket exists:', !!socket);
+    console.log('📋 [requestLock] Diagram ID:', diagram.id);
+    console.log('👤 [requestLock] User name:', userName);
+    console.log('🔒 [requestLock] Current lock status:', lockStatus);
+    
     if (socket) {
+      console.log('✅ [requestLock] Emitting request-lock event with payload:', { diagramId: diagram.id });
       socket.emit('request-lock', { diagramId: diagram.id });
+      console.log('📤 [requestLock] Event emitted successfully');
+    } else {
+      console.log('❌ [requestLock] Socket is null, cannot emit request-lock');
+      console.log('🔍 [requestLock] Socket state debug:', socket);
     }
   };
 
@@ -520,27 +713,35 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
     updateNode(selectedNode, { text: '' });
   };
 
-  // 도형 전체 삭제
-  const deleteNode = () => {
-    if (!isLocked || !selectedNode) return;
-
-    setNodes(nodes.filter(node => node.id !== selectedNode));
-    emitChanges({ nodes: { deleted: [selectedNode] } });
-    clearHighlight();
-  };
 
   // 컨텍스트에 따른 삭제 동작 결정
   const handleDelete = (forceShapeDelete = false) => {
-    if (!isLocked || !selectedNode) return;
+    if (!isLocked) return;
     
-    const selectedNodeData = nodes.find(node => node.id === selectedNode);
-    if (!selectedNodeData) return;
+    const nodesToDelete = selectedNodes.size > 0 ? selectedNodes : (selectedNode ? new Set([selectedNode]) : new Set());
+    
+    if (nodesToDelete.size === 0) return;
     
     // Shift 키를 누르고 있거나 forceShapeDelete가 true면 도형 전체 삭제
     if (forceShapeDelete) {
-      deleteNode();
-    } else {
-      // 기본 동작: 텍스트만 지우기
+      // 다중 노드 삭제
+      const updatedNodes = nodes.filter(node => !nodesToDelete.has(node.id));
+      const updatedEdges = edges.filter(
+        edge => !nodesToDelete.has(edge.from) && !nodesToDelete.has(edge.to)
+      );
+      
+      setNodes(updatedNodes);
+      setEdges(updatedEdges);
+      
+      // 서버에 변경사항 전송
+      emitChanges({ 
+        nodes: { deleted: Array.from(nodesToDelete) as string[] },
+        edges: { deleted: edges.filter(edge => nodesToDelete.has(edge.from) || nodesToDelete.has(edge.to)).map(e => e.id) }
+      });
+      
+      clearHighlight();
+    } else if (selectedNode) {
+      // 기본 동작: 텍스트만 지우기 (단일 선택된 노드만)
       clearNodeText();
     }
   };
@@ -551,7 +752,8 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
     return colors[Math.floor(Math.random() * colors.length)];
   };
 
-  const handleStageClick = (e: any) => {
+  // 스테이지 마우스 다운 핸들러 (드래그 선택 시작)
+  const handleStageMouseDown = (e: any) => {
     const clickedOnEmpty = e.target === e.target.getStage();
     
     if (clickedOnEmpty) {
@@ -562,8 +764,32 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
         setTempEdgeEnd(null);
       }
       
-      clearHighlight(); // 하이라이트 해제
-      
+      // 선택 도구인 경우 드래그 선택 시작
+      if (tool === 'select') {
+        if (!e.evt.shiftKey) {
+          clearHighlight(); // Shift 키가 없으면 하이라이트 해제
+        }
+        
+        // 드래그 선택 시작
+        const pos = e.target.getStage().getPointerPosition();
+        const stageScale = stageRef.current.scaleX();
+        const adjustedPos = {
+          x: (pos.x - stagePos.x) / stageScale,
+          y: (pos.y - stagePos.y) / stageScale
+        };
+        
+        setIsSelecting(true);
+        setDragStart(adjustedPos);
+        setSelectionRect({ x: adjustedPos.x, y: adjustedPos.y, width: 0, height: 0 });
+      }
+    }
+  };
+
+  const handleStageClick = (e: any) => {
+    const clickedOnEmpty = e.target === e.target.getStage();
+    
+    if (clickedOnEmpty) {
+      // 다른 도구인 경우 노드 생성
       if ((tool === 'rectangle' || tool === 'ellipse' || tool === 'text') && isLocked) {
         const pos = e.target.getStage().getPointerPosition();
         const stageScale = stageRef.current.scaleX();
@@ -576,18 +802,6 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
     }
   };
 
-  // 마우스 움직임 핸들러 (연결선 생성 중 미리보기용)
-  const handleStageMouseMove = (e: any) => {
-    if (isCreatingEdge && edgeStart) {
-      const pos = e.target.getStage().getPointerPosition();
-      const stageScale = stageRef.current.scaleX();
-      const adjustedPos = {
-        x: (pos.x - stagePos.x) / stageScale,
-        y: (pos.y - stagePos.y) / stageScale
-      };
-      setTempEdgeEnd(adjustedPos);
-    }
-  };
 
   // 연결선 경로 생성 함수
   const generateEdgePath = useCallback((edge: Edge, fromNode: Node, toNode: Node) => {
@@ -700,7 +914,8 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
           onToolChange={handleToolChange}
           canEdit={isLocked}
           onDelete={handleDelete}
-          hasSelection={!!selectedNode}
+          hasSelection={!!selectedNode || selectedNodes.size > 0}
+          onMermaidImport={() => setShowMermaidInput(true)}
         />
         
         <div className="canvas-container">
@@ -708,8 +923,10 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
             ref={stageRef}
             width={window.innerWidth - 360} // 도구패널(80) + 속성패널(280)
             height={window.innerHeight - 60} // 헤더(60)
+            onMouseDown={handleStageMouseDown}
             onClick={handleStageClick}
-            onMouseMove={handleStageMouseMove}
+            onMouseMove={handleStageMouseMoveNew}
+            onMouseUp={handleStageMouseUp}
             onWheel={handleWheel}
             draggable={tool === 'hand'}
             className={isLocked ? 'editable' : 'readonly'}
@@ -739,12 +956,12 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
                       height={node.height}
                       fill={node.fill}
                       stroke={
-                        selectedNode === node.id ? '#0066cc' : 
+                        selectedNode === node.id || selectedNodes.has(node.id) ? '#0066cc' : 
                         highlightedElements.nodes.has(node.id) ? '#ff6b35' : 
                         node.stroke || '#666'
                       }
                       strokeWidth={
-                        selectedNode === node.id ? 3 : 
+                        selectedNode === node.id || selectedNodes.has(node.id) ? 3 : 
                         highlightedElements.nodes.has(node.id) ? 2 : 
                         node.strokeWidth || 1
                       }
@@ -753,7 +970,7 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
                       }
                       dash={node.strokeStyle === 'dashed' ? [10, 5] : node.strokeStyle === 'dotted' ? [2, 2] : undefined}
                       draggable={isLocked && tool === 'select'}
-                      onClick={() => handleNodeClick(node.id)}
+                      onClick={(e) => handleNodeClick(node.id, e)}
                       onMouseEnter={(e) => {
                         const target = e.target as any;
                         target.getStage().container().style.cursor = 'pointer';
@@ -766,7 +983,7 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
                         target.getStage().container().style.cursor = 'default';
                         if (!highlightedElements.nodes.has(node.id)) {
                           target.strokeWidth(
-                            selectedNode === node.id ? 3 : 
+                            selectedNode === node.id || selectedNodes.has(node.id) ? 3 : 
                             highlightedElements.nodes.has(node.id) ? 2 : 
                             node.strokeWidth || 1
                           );
@@ -800,12 +1017,12 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
                       radiusY={node.height / 2}
                       fill={node.fill}
                       stroke={
-                        selectedNode === node.id ? '#0066cc' : 
+                        selectedNode === node.id || selectedNodes.has(node.id) ? '#0066cc' : 
                         highlightedElements.nodes.has(node.id) ? '#ff6b35' : 
                         node.stroke || '#666'
                       }
                       strokeWidth={
-                        selectedNode === node.id ? 3 : 
+                        selectedNode === node.id || selectedNodes.has(node.id) ? 3 : 
                         highlightedElements.nodes.has(node.id) ? 2 : 
                         node.strokeWidth || 1
                       }
@@ -814,7 +1031,7 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
                       }
                       dash={node.strokeStyle === 'dashed' ? [10, 5] : node.strokeStyle === 'dotted' ? [2, 2] : undefined}
                       draggable={isLocked && tool === 'select'}
-                      onClick={() => handleNodeClick(node.id)}
+                      onClick={(e) => handleNodeClick(node.id, e)}
                       onMouseEnter={(e) => {
                         const target = e.target as any;
                         target.getStage().container().style.cursor = 'pointer';
@@ -827,7 +1044,7 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
                         target.getStage().container().style.cursor = 'default';
                         if (!highlightedElements.nodes.has(node.id)) {
                           target.strokeWidth(
-                            selectedNode === node.id ? 3 : 
+                            selectedNode === node.id || selectedNodes.has(node.id) ? 3 : 
                             highlightedElements.nodes.has(node.id) ? 2 : 
                             node.strokeWidth || 1
                           );
@@ -874,7 +1091,7 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
                     fill={node.type === 'text' ? '#333' : '#333'}
                     padding={node.type === 'text' ? 4 : 0}
                     draggable={isLocked && tool === 'select' && node.type === 'text'}
-                    onClick={node.type === 'text' ? () => handleNodeClick(node.id) : undefined}
+                    onClick={node.type === 'text' ? (e) => handleNodeClick(node.id, e) : undefined}
                     onDragStart={node.type === 'text' ? (e) => {
                       // 드래그 시작 시 해당 노드 선택 및 포커스
                       e.evt.stopPropagation();
@@ -1069,6 +1286,21 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
                 );
               })()}
 
+              {/* 드래그 선택 영역 */}
+              {selectionRect && (
+                <Rect
+                  x={selectionRect.x}
+                  y={selectionRect.y}
+                  width={selectionRect.width}
+                  height={selectionRect.height}
+                  fill="rgba(0, 123, 255, 0.1)"
+                  stroke="#007bff"
+                  strokeWidth={1}
+                  dash={[5, 5]}
+                  listening={false}
+                />
+              )}
+
               {/* Selection indicators for selected node */}
               {selectedNode && (() => {
                 const node = nodes.find(n => n.id === selectedNode);
@@ -1080,6 +1312,18 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
                   />
                 ) : null;
               })()}
+              
+              {/* Selection indicators for multi-selected nodes */}
+              {Array.from(selectedNodes).filter(id => id !== selectedNode).map(nodeId => {
+                const node = nodes.find(n => n.id === nodeId);
+                return node ? (
+                  <SelectionIndicator
+                    key={`multi-selection-${nodeId}`}
+                    node={node}
+                    visible={true}
+                  />
+                ) : null;
+              })}
             </Layer>
           </Stage>
           
@@ -1185,6 +1429,14 @@ const Whiteboard: React.FC<Props> = ({ diagram, socket, userName, onBack }) => {
           onCancel={cancelEdgeLabelEdit}
           placeholder="레이블 입력..."
           maxLength={30}
+        />
+      )}
+      
+      {/* Mermaid Import Dialog */}
+      {showMermaidInput && (
+        <MermaidInput
+          onImport={handleMermaidImport}
+          onClose={() => setShowMermaidInput(false)}
         />
       )}
     </div>
